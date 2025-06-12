@@ -97,7 +97,8 @@ struct ElfHeader64 {
 const ELF_MAGIC: &[u8; 4] = b"\x7FELF";
 
 pub struct ElfSegment {
-    pub data: Vec<u8>,
+    pub data: Option<Vec<u8>>,
+    mem_size: u64,
     pub phys_addr: u64,
     pub virt_addr: u64,
     pub loadable: bool,
@@ -105,8 +106,8 @@ pub struct ElfSegment {
 }
 
 impl ElfSegment {
-    pub fn mem_size(&self) -> u64 {
-        self.data.len() as u64
+    pub fn size(&self) -> u64 {
+        self.mem_size
     }
 
     pub fn is_writable(&self) -> bool {
@@ -206,12 +207,17 @@ impl ElfFile {
                 continue;
             }
 
-            let mut segment_data = vec![0; phent.memsz as usize];
-            segment_data[..phent.filesz as usize]
-                .copy_from_slice(&bytes[segment_start..segment_end]);
+            let data = if phent.filesz > 0 {
+                let mut segment_data = vec![0u8; phent.memsz as usize];
+                segment_data[..].copy_from_slice(&bytes[segment_start..segment_end]);
+                Some(segment_data)
+            } else {
+                None
+            };
 
             let segment = ElfSegment {
-                data: segment_data,
+                data,
+                mem_size: phent.memsz,
                 phys_addr: phent.paddr,
                 virt_addr: phent.vaddr,
                 loadable: phent.type_ == 1,
@@ -319,10 +325,19 @@ impl ElfFile {
     pub fn write_symbol(&mut self, variable_name: &str, data: &[u8]) -> Result<(), String> {
         let (vaddr, size) = self.find_symbol(variable_name)?;
         for seg in &mut self.segments {
-            if vaddr >= seg.virt_addr && vaddr + size <= seg.virt_addr + seg.data.len() as u64 {
+            if vaddr >= seg.virt_addr && vaddr + size <= seg.virt_addr + seg.size() as u64 {
                 let offset = (vaddr - seg.virt_addr) as usize;
                 assert!(data.len() as u64 <= size);
-                seg.data[offset..offset + data.len()].copy_from_slice(data);
+                match seg.data {
+                    Some(ref mut d) => {
+                        d[offset..offset + data.len()].copy_from_slice(data);
+                    }
+                    None => {
+                        seg.data = Some(vec![0u8; seg.size() as usize]);
+                        seg.data.as_mut().unwrap()[offset..offset + data.len()]
+                            .copy_from_slice(data);
+                    }
+                }
                 return Ok(());
             }
         }
@@ -332,9 +347,9 @@ impl ElfFile {
 
     pub fn get_data(&self, vaddr: u64, size: u64) -> Option<&[u8]> {
         for seg in &self.segments {
-            if vaddr >= seg.virt_addr && vaddr + size <= seg.virt_addr + seg.data.len() as u64 {
+            if vaddr >= seg.virt_addr && vaddr + size <= seg.virt_addr + seg.size() {
                 let offset = (vaddr - seg.virt_addr) as usize;
-                return Some(&seg.data[offset..offset + size as usize]);
+                return Some(&seg.data.as_ref()?[offset..offset + size as usize]);
             }
         }
 

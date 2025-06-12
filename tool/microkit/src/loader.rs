@@ -80,7 +80,7 @@ impl Riscv64 {
 
 /// Checks that each region in the given list does not overlap with any other region.
 /// Panics upon finding an overlapping region
-fn check_non_overlapping(regions: &Vec<(u64, &[u8])>) {
+fn check_non_overlapping(regions: &Vec<(u64, &Vec<u8>)>) {
     let mut checked: Vec<(u64, u64)> = Vec::new();
     for (base, data) in regions {
         let end = base + data.len() as u64;
@@ -125,7 +125,7 @@ pub struct Loader<'a> {
     image: Vec<u8>,
     header: LoaderHeader64,
     region_metadata: Vec<LoaderRegion64>,
-    regions: Vec<(u64, &'a [u8])>,
+    regions: Vec<(u64, &'a Vec<u8>)>,
 }
 
 impl<'a> Loader<'a> {
@@ -136,7 +136,7 @@ impl<'a> Loader<'a> {
         initial_task_elf: &'a ElfFile,
         initial_task_phys_base: Option<u64>,
         reserved_region: MemoryRegion,
-        system_regions: Vec<(u64, &'a [u8])>,
+        system_regions: Vec<(u64, &'a Vec<u8>)>,
     ) -> Loader<'a> {
         // Note: If initial_task_phys_base is not None, then it just this address
         // as the base physical address of the initial task, rather than the address
@@ -167,10 +167,9 @@ impl<'a> Loader<'a> {
                 }
 
                 if kernel_last_vaddr.is_none()
-                    || segment.virt_addr + segment.mem_size() > kernel_last_vaddr.unwrap()
+                    || segment.virt_addr + segment.size() > kernel_last_vaddr.unwrap()
                 {
-                    kernel_last_vaddr =
-                        Some(round_up(segment.virt_addr + segment.mem_size(), mb(2)));
+                    kernel_last_vaddr = Some(round_up(segment.virt_addr + segment.size(), mb(2)));
                 }
 
                 if kernel_first_paddr.is_none() || segment.phys_addr < kernel_first_paddr.unwrap() {
@@ -183,7 +182,7 @@ impl<'a> Loader<'a> {
                     panic!("Kernel does not have a consistent physical to virtual offset");
                 }
 
-                regions.push((segment.phys_addr, segment.data.as_slice()));
+                regions.push((segment.phys_addr, segment.data.as_ref().unwrap()));
             }
         }
 
@@ -203,7 +202,7 @@ impl<'a> Loader<'a> {
         assert!(segment.loadable);
 
         let inittask_first_vaddr = segment.virt_addr;
-        let inittask_last_vaddr = round_up(segment.virt_addr + segment.mem_size(), kb(4));
+        let inittask_last_vaddr = round_up(segment.virt_addr + segment.size(), kb(4));
 
         let inittask_first_paddr = match initial_task_phys_base {
             Some(paddr) => paddr,
@@ -212,7 +211,7 @@ impl<'a> Loader<'a> {
         let inittask_p_v_offset = inittask_first_vaddr - inittask_first_paddr;
 
         // Note: For now we include any zeroes. We could optimize in the future
-        regions.push((inittask_first_paddr, &segment.data));
+        regions.push((inittask_first_paddr, segment.data.as_ref().unwrap()));
 
         // Determine the pagetable variables
         assert!(kernel_first_vaddr.is_some());
@@ -237,7 +236,7 @@ impl<'a> Loader<'a> {
             .find(|segment| segment.loadable)
             .expect("Did not find loadable segment");
         let image_vaddr = image_segment.virt_addr;
-        let mut image = image_segment.data;
+        let mut image = image_segment.data.unwrap();
 
         if image_vaddr != elf.entry {
             panic!("The loader entry point must be the first byte in the image");
@@ -282,7 +281,7 @@ impl<'a> Loader<'a> {
 
         let mut region_metadata = Vec::new();
         let mut offset: u64 = 0;
-        for (addr, data) in &all_regions {
+        for (addr, data) in all_regions.iter() {
             region_metadata.push(LoaderRegion64 {
                 load_addr: *addr,
                 size: data.len() as u64,

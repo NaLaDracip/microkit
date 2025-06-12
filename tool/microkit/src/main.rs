@@ -445,7 +445,7 @@ fn phys_mem_regions_from_elf(elf: &ElfFile, alignment: u64) -> Vec<MemoryRegion>
         .map(|s| {
             MemoryRegion::new(
                 util::round_down(s.phys_addr, alignment),
-                util::round_up(s.phys_addr + s.data.len() as u64, alignment),
+                util::round_up(s.phys_addr + s.size(), alignment),
             )
         })
         .collect()
@@ -474,7 +474,7 @@ fn virt_mem_regions_from_elf(elf: &ElfFile, alignment: u64) -> Vec<MemoryRegion>
         .map(|s| {
             MemoryRegion::new(
                 util::round_down(s.virt_addr, alignment),
-                util::round_up(s.virt_addr + s.data.len() as u64, alignment),
+                util::round_up(s.virt_addr + s.size(), alignment),
             )
         })
         .collect()
@@ -1183,7 +1183,7 @@ fn build_system(
             pd_elf_regions[i].push(Region::new(
                 format!("PD-ELF {}-{}", pd.name, seg_idx),
                 segment_phys_addr,
-                segment.data.len() as u64,
+                segment.size(),
                 seg_idx,
             ));
 
@@ -1199,10 +1199,8 @@ fn build_system(
             }
 
             let base_vaddr = util::round_down(segment.virt_addr, config.minimum_page_size);
-            let end_vaddr = util::round_up(
-                segment.virt_addr + segment.mem_size(),
-                config.minimum_page_size,
-            );
+            let end_vaddr =
+                util::round_up(segment.virt_addr + segment.size(), config.minimum_page_size);
             let aligned_size = end_vaddr - base_vaddr;
             let name = format!("ELF:{}-{}", pd.name, seg_idx);
             let mr = SysMemoryRegion {
@@ -3550,13 +3548,17 @@ fn main() -> Result<(), String> {
     }
     report_buf.flush().unwrap();
 
-    let mut loader_regions: Vec<(u64, &[u8])> = vec![(
+    let mut loader_regions = vec![(
         built_system.reserved_region.base,
         &built_system.invocation_data,
     )];
     for (i, regions) in built_system.pd_elf_regions.iter().enumerate() {
         for r in regions {
-            loader_regions.push((r.addr, r.data(&pd_elf_files[i])));
+            let data = r.data(&pd_elf_files[i]);
+            if data.is_none() {
+                continue;
+            }
+            loader_regions.push((r.addr, data.unwrap()));
         }
     }
 

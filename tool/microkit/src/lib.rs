@@ -73,8 +73,8 @@ impl Region {
         }
     }
 
-    pub fn data<'a>(&self, elf: &'a elf::ElfFile) -> &'a Vec<u8> {
-        &elf.segments[self.segment_idx].data
+    pub fn data<'a>(&self, elf: &'a elf::ElfFile) -> Option<&'a Vec<u8>> {
+        elf.segments[self.segment_idx].data.as_ref()
     }
 }
 
