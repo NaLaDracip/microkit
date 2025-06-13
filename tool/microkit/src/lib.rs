@@ -63,6 +63,12 @@ pub struct Region {
     segment_idx: usize,
 }
 
+#[derive(Clone)]
+pub enum RegionData<'a> {
+    Data(&'a Vec<u8>),
+    Zeros(u64),
+}
+
 impl Region {
     pub fn new(name: String, addr: u64, size: u64, segment_idx: usize) -> Region {
         Region {
@@ -73,8 +79,19 @@ impl Region {
         }
     }
 
-    pub fn data<'a>(&self, elf: &'a elf::ElfFile) -> Option<&'a Vec<u8>> {
-        elf.segments[self.segment_idx].data.as_ref()
+    pub fn data<'a>(&self, elf: &'a elf::ElfFile) -> RegionData<'a> {
+        println!("Region::data: segment_idx={}", self.segment_idx);
+        let ret = elf.segments[self.segment_idx].data.as_ref();
+        if ret.is_none() {
+            println!(
+                "{} bytes will not be loaded",
+                elf.segments[self.segment_idx].size()
+            );
+        }
+        match ret {
+            Some(data) => RegionData::Data(data),
+            None => RegionData::Zeros(elf.segments[self.segment_idx].size()),
+        }
     }
 }
 

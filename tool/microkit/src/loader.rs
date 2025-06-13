@@ -7,7 +7,7 @@
 use crate::elf::ElfFile;
 use crate::sel4::{Arch, Config};
 use crate::util::{kb, mask, mb, round_up, struct_to_bytes};
-use crate::MemoryRegion;
+use crate::{MemoryRegion, RegionData};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -80,10 +80,13 @@ impl Riscv64 {
 
 /// Checks that each region in the given list does not overlap with any other region.
 /// Panics upon finding an overlapping region
-fn check_non_overlapping(regions: &Vec<(u64, &Vec<u8>)>) {
+fn check_non_overlapping(regions: &Vec<(u64, RegionData<'_>)>) {
     let mut checked: Vec<(u64, u64)> = Vec::new();
     for (base, data) in regions {
-        let end = base + data.len() as u64;
+        let end = match data {
+            RegionData::Zeros(size) => base + size,
+            RegionData::Data(d) => d.len() as u64 + base,
+        };
         // Check that this does not overlap with any checked regions
         for (b, e) in &checked {
             if !(end <= *b || *base >= *e) {
@@ -125,7 +128,7 @@ pub struct Loader<'a> {
     image: Vec<u8>,
     header: LoaderHeader64,
     region_metadata: Vec<LoaderRegion64>,
-    regions: Vec<(u64, &'a Vec<u8>)>,
+    regions: Vec<(u64, RegionData<'a>)>,
 }
 
 impl<'a> Loader<'a> {
@@ -136,7 +139,7 @@ impl<'a> Loader<'a> {
         initial_task_elf: &'a ElfFile,
         initial_task_phys_base: Option<u64>,
         reserved_region: MemoryRegion,
-        system_regions: Vec<(u64, &'a Vec<u8>)>,
+        system_regions: Vec<(u64, RegionData<'a>)>,
     ) -> Loader<'a> {
         // Note: If initial_task_phys_base is not None, then it just this address
         // as the base physical address of the initial task, rather than the address
@@ -182,7 +185,13 @@ impl<'a> Loader<'a> {
                     panic!("Kernel does not have a consistent physical to virtual offset");
                 }
 
-                regions.push((segment.phys_addr, segment.data.as_ref().unwrap()));
+                regions.push((
+                    segment.phys_addr,
+                    segment
+                        .data
+                        .as_ref()
+                        .map_or(RegionData::Zeros(segment.size()), |d| RegionData::Data(d)),
+                ));
             }
         }
 
@@ -211,7 +220,13 @@ impl<'a> Loader<'a> {
         let inittask_p_v_offset = inittask_first_vaddr - inittask_first_paddr;
 
         // Note: For now we include any zeroes. We could optimize in the future
-        regions.push((inittask_first_paddr, segment.data.as_ref().unwrap()));
+        regions.push((
+            inittask_first_paddr,
+            segment
+                .data
+                .as_ref()
+                .map_or(RegionData::Zeros(segment.size()), |d| RegionData::Data(d)),
+        ));
 
         // Determine the pagetable variables
         assert!(kernel_first_vaddr.is_some());
@@ -271,7 +286,7 @@ impl<'a> Loader<'a> {
         }
 
         let mut all_regions_with_loader = all_regions.clone();
-        all_regions_with_loader.push((image_vaddr, &image));
+        all_regions_with_loader.push((image_vaddr, RegionData::Data(&image)));
         check_non_overlapping(&all_regions_with_loader);
 
         let flags = match config.hypervisor {
@@ -282,13 +297,17 @@ impl<'a> Loader<'a> {
         let mut region_metadata = Vec::new();
         let mut offset: u64 = 0;
         for (addr, data) in all_regions.iter() {
+            let (size, ltype, to_offset) = match data {
+                RegionData::Zeros(size) => (*size, 2, 0),
+                RegionData::Data(d) => (d.len() as u64, 1, d.len() as u64),
+            };
             region_metadata.push(LoaderRegion64 {
                 load_addr: *addr,
-                size: data.len() as u64,
+                size,
                 offset,
-                r#type: 1,
+                r#type: ltype,
             });
-            offset += data.len() as u64;
+            offset += to_offset;
         }
 
         let size = std::mem::size_of::<LoaderHeader64>() as u64
@@ -343,12 +362,23 @@ impl<'a> Loader<'a> {
                 .write_all(region_metadata_bytes)
                 .expect("Failed to write region metadata to loader");
         }
-
+        println!(
+            "Written before elf {}",
+            self.image.len()
+                + header_bytes.len()
+                + self.region_metadata.len() * std::mem::size_of::<LoaderRegion64>()
+        );
         // Now we can write out all the region data
         for (_, data) in &self.regions {
-            loader_buf
-                .write_all(data)
-                .expect("Failed to write region data to loader");
+            match data {
+                RegionData::Zeros(_) => {}
+                RegionData::Data(d) => {
+                    // Write out the actual data
+                    loader_buf
+                        .write_all(d)
+                        .expect("Failed to write region data to loader");
+                }
+            }
         }
 
         loader_buf.flush().unwrap();

@@ -3550,15 +3550,12 @@ fn main() -> Result<(), String> {
 
     let mut loader_regions = vec![(
         built_system.reserved_region.base,
-        &built_system.invocation_data,
+        RegionData::Data(&built_system.invocation_data),
     )];
     for (i, regions) in built_system.pd_elf_regions.iter().enumerate() {
         for r in regions {
             let data = r.data(&pd_elf_files[i]);
-            if data.is_none() {
-                continue;
-            }
-            loader_regions.push((r.addr, data.unwrap()));
+            loader_regions.push((r.addr, data));
         }
     }
 

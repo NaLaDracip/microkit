@@ -595,10 +595,26 @@ static void copy_data(void)
     const void *base = &loader_data->regions[loader_data->num_regions];
     for (uint32_t i = 0; i < loader_data->num_regions; i++) {
         const struct region *r = &loader_data->regions[i];
+        if (r->type == REGION_TYPE_DATA)  {
         puts("LDR|INFO: copying region ");
         puthex32(i);
         puts("\n");
         memcpy((void *)(uintptr_t)r->load_addr, base + r->offset, r->size);
+    }
+        else if (r->type == REGION_TYPE_ZERO) {
+            puts("LDR|INFO: zeroing region ");
+            puthex32(i);
+            puts("\n");
+            /* Zero the region */
+            volatile uint8_t *ptr = (volatile uint8_t *)(uintptr_t)r->load_addr;
+            for (uintptr_t j = 0; j < r->size; j++) {
+                ptr[j] = 0;
+            }
+        } else {
+            puts("LDR|ERROR: unknown region type ");
+            puthex32(r->type);
+            puts("\n");
+        }
     }
 }
 
