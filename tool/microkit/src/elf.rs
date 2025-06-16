@@ -214,7 +214,6 @@ impl ElfFile {
                     .copy_from_slice(&bytes[segment_start..segment_end]);
                 Some(segment_data)
             } else {
-                println!("Probably a zero-sized segment in '{}'", path.display());
                 None
             };
 
@@ -329,7 +328,6 @@ impl ElfFile {
         let (vaddr, size) = self.find_symbol(variable_name)?;
         for (i, seg) in self.segments.iter_mut().enumerate() {
             if vaddr >= seg.virt_addr && vaddr + size <= seg.virt_addr + seg.size() as u64 {
-                println!("Writing to segment {} for variable '{}'", i, variable_name);
                 let offset = (vaddr - seg.virt_addr) as usize;
                 assert!(data.len() as u64 <= size);
                 match seg.data {
