@@ -94,6 +94,15 @@ static void *memcpy(void *dst, const void *src, size_t sz)
     return dst;
 }
 
+static void *memclear(void *dst, size_t sz)
+{
+    char *dst_ = dst;
+    while (sz-- > 0) {
+        *dst_++ = 0;
+    }
+
+    return dst;
+}
 void *memmove(void *restrict dest, const void *restrict src, size_t n)
 {
     unsigned char *d = (unsigned char *)dest;
@@ -606,10 +615,8 @@ static void copy_data(void)
             puthex32(i);
             puts("\n");
             /* Zero the region */
-            volatile uint8_t *ptr = (volatile uint8_t *)(uintptr_t)r->load_addr;
-            for (uintptr_t j = 0; j < r->size; j++) {
-                ptr[j] = 0;
-            }
+            void *ptr = (void *)(uintptr_t)r->load_addr;
+            memclear((void *)ptr, r->size);
         } else {
             puts("LDR|ERROR: unknown region type ");
             puthex32(r->type);
