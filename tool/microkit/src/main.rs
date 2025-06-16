@@ -11,7 +11,7 @@ use elf::ElfFile;
 use loader::Loader;
 use microkit_tool::{
     elf, loader, sdf, sel4, util, DisjointMemoryRegion, FindFixedError, MemoryRegion,
-    ObjectAllocator, Region, UntypedObject, MAX_PDS, MAX_VMS, PD_MAX_NAME_LENGTH,
+    ObjectAllocator, Region, RegionData, UntypedObject, MAX_PDS, MAX_VMS, PD_MAX_NAME_LENGTH,
     VM_MAX_NAME_LENGTH,
 };
 use sdf::{
