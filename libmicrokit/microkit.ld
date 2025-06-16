@@ -5,8 +5,10 @@
  */
 PHDRS
 {
-    text PT_LOAD;
-    data PT_LOAD;
+    text PT_LOAD FLAGS(5);
+    rodata PT_LOAD FLAGS(4);
+    data PT_LOAD FLAGS(6);
+    bss PT_LOAD FLAGS(6);
 }
 
 ENTRY(_start);
@@ -20,9 +22,17 @@ SECTIONS
         _text = .;
         *(.text.start)
         *(.text*)
-        *(.rodata)
         _text_end = .;
     } :text
+
+    . = ALIGN(0x1000);
+
+    .rodata :
+    {
+	_rodata = .;
+	*(.rodata)
+	_rodata_end = .;
+    } :rodata
 
     . = ALIGN(0x1000);
 
@@ -40,6 +50,7 @@ SECTIONS
     {
         _data = .;
         *(.data)
+        *libmicrokit.a:*(.bss*)
         . = ALIGN(8);
         __global_pointer$ = . + 0x800;
         *(.srodata)
@@ -47,7 +58,9 @@ SECTIONS
         _data_end = .;
     } :data
 
-    .bss :
+    . = ALIGN(0x1000);
+
+    .bss  :
     {
         _bss = .;
         *(.sbss)
@@ -56,7 +69,7 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         _bss_end = .;
-    } :data
+    } :bss
 
     . = ALIGN(0x1000);
     .ipc_buffer (NOLOAD): {
