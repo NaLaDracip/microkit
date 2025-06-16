@@ -80,14 +80,7 @@ impl Region {
     }
 
     pub fn data<'a>(&self, elf: &'a elf::ElfFile) -> RegionData<'a> {
-        println!("Region::data: segment_idx={}", self.segment_idx);
         let ret = elf.segments[self.segment_idx].data.as_ref();
-        if ret.is_none() {
-            println!(
-                "{} bytes will not be loaded",
-                elf.segments[self.segment_idx].size()
-            );
-        }
         match ret {
             Some(data) => RegionData::Data(data),
             None => RegionData::Zeros(elf.segments[self.segment_idx].size()),

@@ -362,12 +362,6 @@ impl<'a> Loader<'a> {
                 .write_all(region_metadata_bytes)
                 .expect("Failed to write region metadata to loader");
         }
-        println!(
-            "Written before elf {}",
-            self.image.len()
-                + header_bytes.len()
-                + self.region_metadata.len() * std::mem::size_of::<LoaderRegion64>()
-        );
         // Now we can write out all the region data
         for (_, data) in &self.regions {
             match data {
