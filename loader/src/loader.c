@@ -85,24 +85,76 @@ typedef void (*sel4_entry)(
 
 static void *memcpy(void *dst, const void *src, size_t sz)
 {
-    char *dst_ = dst;
-    const char *src_ = src;
-    while (sz-- > 0) {
-        *dst_++ = *src_++;
+    size_t word_size = sizeof(uintptr_t);
+    uintptr_t align_mask = word_size - 1;
+
+    uint8_t *d8 = (uint8_t *)dst;
+    const uint8_t *s8 = (const uint8_t *)src;
+    while (sz > 0 && ((((uintptr_t)d8 & align_mask) != 0) || (((uintptr_t)s8 & align_mask) != 0))) {
+        *d8++ = *s8++;
+        sz--;
     }
 
+    if (word_size == 8) {
+        uint64_t *d64 = (uint64_t *)d8;
+        const uint64_t *s64 = (const uint64_t *)s8;
+        while (sz >= 8) {
+            *d64++ = *s64++;
+            sz -= 8;
+        }
+        d8 = (uint8_t *)d64;
+        s8 = (const uint8_t *)s64;
+    } else if (word_size == 4) {
+        uint32_t *d32 = (uint32_t *)d8;
+        const uint32_t *s32 = (const uint32_t *)s8;
+        while (sz >= 4) {
+            *d32++ = *s32++;
+            sz -= 4;
+        }
+        d8 = (uint8_t *)d32;
+        s8 = (const uint8_t *)s32;
+    }
+
+    while (sz--) {
+        *d8++ = *s8++;
+    }
     return dst;
 }
 
 static void *memclear(void *dst, size_t sz)
 {
-    char *dst_ = dst;
-    while (sz-- > 0) {
-        *dst_++ = 0;
+    size_t word_size = sizeof(uintptr_t);
+    uintptr_t align_mask = word_size - 1;
+
+    uint8_t *d8 = (uint8_t *)dst;
+    while (sz > 0 && ((uintptr_t)d8 & align_mask)) {
+        *d8++ = 0;
+        sz--;
+    }
+
+    if (word_size == 8) {
+        uint64_t *d64 = (uint64_t *)d8;
+        while (sz >= 8) {
+            *d64++ = 0;
+            sz -= 8;
+        }
+        d8 = (uint8_t *)d64;
+    } else if (word_size == 4) {
+        uint32_t *d32 = (uint32_t *)d8;
+        while (sz >= 4) {
+            *d32++ = 0;
+            sz -= 4;
+        }
+        d8 = (uint8_t *)d32;
+    }
+
+    while (sz--) {
+        *d8++ = 0;
     }
 
     return dst;
 }
+
 void *memmove(void *restrict dest, const void *restrict src, size_t n)
 {
     unsigned char *d = (unsigned char *)dest;
